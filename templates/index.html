@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ChatWithPDF</title>
+<style>
+body { background-color: #000; color: #fff; font-family: Arial, sans-serif; padding: 20px; }
+h1 { color: #0f0; text-align: center; }
+.container { max-width: 800px; margin: auto; }
+input, button, select, textarea { font-size: 16px; padding: 10px; margin: 5px 0; width: 100%; border-radius: 5px; }
+button { background-color: #0af; color: #fff; border: none; cursor: pointer; font-weight: bold; }
+button:disabled { background-color: #555; cursor: not-allowed; }
+.answer { background-color: #111; border: 1px solid #0f0; padding: 10px; margin-top: 10px; white-space: pre-wrap; color:#0f0; }
+.card { background-color: #222; border: 1px solid #0af; padding: 10px; margin-top: 5px; color:#0af; }
+footer { text-align: center; color: #888; margin-top: 30px; font-size: 14px; border-top: 1px solid #444; padding-top: 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>ChatWithPDF</h1>
+
+    <h2>Upload PDF</h2>
+    <input type="file" id="pdfFile" accept=".pdf">
+    <button id="uploadBtn">Upload PDF</button>
+    <p id="uploadStatus"></p>
+
+    <h2>Ask a Question</h2>
+    <textarea id="question" placeholder="Type your question..." rows="2"></textarea>
+    <label>Top K results:</label>
+    <select id="topK">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="4" selected>4</option>
+        <option value="6">6</option>
+    </select>
+    <button id="askBtn" disabled>Ask</button>
+
+    <h2>Answer</h2>
+    <div id="answer" class="answer"></div>
+
+    <h3>Context Used</h3>
+    <div id="contexts"></div>
+</div>
+
+<footer>© 2025 ChatWithPDF - All Rights Reserved</footer>
+
+<script>
+let indexExists = false;
+
+async function checkIndex() {
+    const res = await fetch("/status");
+    const data = await res.json();
+    indexExists = data.index_exists;
+    document.getElementById("askBtn").disabled = !indexExists;
+}
+
+document.getElementById("uploadBtn").addEventListener("click", async () => {
+    const fileInput = document.getElementById("pdfFile");
+    if (!fileInput.files.length) { alert("Please select a PDF file first!"); return; }
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+
+    const res = await fetch("/ingest", { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (data.status === "ok") {
+        indexExists = true;
+        document.getElementById("askBtn").disabled = false;
+        document.getElementById("uploadStatus").textContent = `Upload successful! Chunks: ${data.chunks}`;
+    } else { document.getElementById("uploadStatus").textContent = "Upload failed!"; }
+});
+
+document.getElementById("askBtn").addEventListener("click", async () => {
+    if (!indexExists) { alert("Please upload a PDF first!"); return; }
+
+    const question = document.getElementById("question").value;
+    const topK = parseInt(document.getElementById("topK").value);
+
+    if (!question.trim()) { alert("Please enter a question!"); return; }
+
+    const res = await fetch("/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, top_k: topK })
+    });
+
+    if (!res.ok) {
+        document.getElementById("answer").textContent = "Error: Could not get answer. Check PDF upload and try again.";
+        return;
+    }
+
+    const data = await res.json();
+    document.getElementById("answer").textContent = data.answer;
+
+    const ctxDiv = document.getElementById("contexts");
+    ctxDiv.innerHTML = "";
+    data.contexts_used.forEach((c, i) => {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.textContent = `[Score: ${c.score.toFixed(3)}] ${c.text}`;
+        ctxDiv.appendChild(card);
+    });
+});
+
+checkIndex();
+</script>
+</body>
+</html>
